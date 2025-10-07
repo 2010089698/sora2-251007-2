@@ -70,7 +70,7 @@
 `Video`
 - `id`: UUID（自前 ID）。
 - `provider_video_id`: OpenAI の動画 ID。
-- `status`: `queued` / `processing` / `completed` / `failed`。
+- `status`: `queued` / `in_progress` / `completed` / `failed`。
 - `model`: 使用モデル名（既定: `sora-2`）。
 - `prompt`: 生成プロンプト。
 - `seconds`: 生成秒数。必要に応じて外部 API 送信時に `duration` へマッピング。
