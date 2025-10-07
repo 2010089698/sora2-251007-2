@@ -1,0 +1,13 @@
+{
+  "name": "sora2-251007-2",
+  "version": "1.0.0",
+  "description": "- Sora 2 / Sora 2 Pro の Videos API で生成した動画を、個人がブラウザから安全に生成・取得・再生できる最小限の Web アプリ。 - 「生成する → 進捗を見る → 再生する」の一連の体験を壊さないことを最優先とし、将来的な拡張も見据えた構成にする。",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs"
+}
