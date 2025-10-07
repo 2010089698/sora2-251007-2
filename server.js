@@ -80,7 +80,13 @@ function sanitizeVideoParams(params) {
   const prompt = params.prompt;
   const model = params.model ?? 'sora-2';
   const size = (params.size || params.resolution || '720x1280');
-  const seconds = (params.seconds != null ? params.seconds : (params.durationSeconds != null ? params.durationSeconds : 4));
+  const rawSeconds =
+    params.seconds != null
+      ? params.seconds
+      : params.durationSeconds != null
+        ? params.durationSeconds
+        : '4';
+  const seconds = typeof rawSeconds === 'string' ? rawSeconds : String(rawSeconds);
 
   if (!prompt || typeof prompt !== 'string' || !prompt.trim()) {
     errors.push('prompt is required');
@@ -93,9 +99,9 @@ function sanitizeVideoParams(params) {
   if (!sizePattern.test(size)) {
     errors.push('size must follow WIDTHxHEIGHT');
   }
-  const secondsNumber = Number(seconds);
-  if (!Number.isFinite(secondsNumber) || secondsNumber <= 0 || secondsNumber > 120) {
-    errors.push('seconds must be between 1 and 120');
+  const allowedSeconds = ['4', '8', '12'];
+  if (!allowedSeconds.includes(seconds)) {
+    errors.push('seconds must be one of 4, 8, 12');
   }
 
   return {
@@ -103,7 +109,7 @@ function sanitizeVideoParams(params) {
     prompt: prompt ? prompt.trim() : '',
     model,
     size,
-    seconds: secondsNumber,
+    seconds,
   };
 }
 

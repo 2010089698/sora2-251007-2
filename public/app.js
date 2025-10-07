@@ -267,7 +267,7 @@ async function handleFormSubmit(event) {
     prompt: elements.prompt.value,
     model: elements.model.value,
     size: elements.size.value,
-    seconds: Number(elements.seconds.value),
+    seconds: elements.seconds.value,
   };
 
   try {
