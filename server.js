@@ -4,11 +4,14 @@ const path = require('path');
 const { URL } = require('url');
 const crypto = require('crypto');
 const { Readable } = require('stream');
+const { Blob } = require('buffer');
+const Busboy = require('busboy');
 
 const PORT = process.env.PORT ? Number(process.env.PORT) : 3000;
 const HOST = '0.0.0.0';
 const API_KEY = process.env.OPENAI_API_KEY || '';
 const POLL_INTERVAL_MS = 5000;
+const MAX_REFERENCE_BYTES = 25 * 1024 * 1024; // 25MB
 
 const videos = new Map();
 const pollHandles = new Map();
@@ -48,6 +51,74 @@ async function parseJsonBody(req) {
   });
 }
 
+async function parseMultipartForm(req) {
+  return new Promise((resolve, reject) => {
+    let fileTooLarge = false;
+    const fields = {};
+    let inputReference = null;
+
+    let busboy;
+    try {
+      busboy = Busboy({
+        headers: req.headers,
+        limits: { fileSize: MAX_REFERENCE_BYTES },
+      });
+    } catch (err) {
+      reject(err);
+      return;
+    }
+
+    busboy.on('field', (name, value) => {
+      fields[name] = value;
+    });
+
+    busboy.on('file', (name, file, info) => {
+      if (name !== 'input_reference') {
+        file.resume();
+        return;
+      }
+      if (inputReference) {
+        file.resume();
+        return;
+      }
+
+      const chunks = [];
+      const { filename, mimeType } = info;
+
+      file.on('data', chunk => {
+        chunks.push(chunk);
+      });
+
+      file.on('limit', () => {
+        fileTooLarge = true;
+        file.resume();
+      });
+
+      file.on('end', () => {
+        if (fileTooLarge) {
+          return;
+        }
+        inputReference = {
+          buffer: Buffer.concat(chunks),
+          filename: filename || 'input_reference',
+          mimeType: mimeType || 'application/octet-stream',
+        };
+      });
+    });
+
+    busboy.on('close', () => {
+      if (fileTooLarge) {
+        reject(new Error('input_reference must not exceed 25MB'));
+        return;
+      }
+      resolve({ fields, inputReference });
+    });
+
+    busboy.on('error', reject);
+    req.pipe(busboy);
+  });
+}
+
 function serveStatic(req, res, filePath) {
   const resolvedPath = path.join(__dirname, 'public', filePath);
   fs.stat(resolvedPath, (err, stats) => {
@@ -74,7 +145,7 @@ function serveStatic(req, res, filePath) {
   });
 }
 
-function sanitizeVideoParams(params) {
+function sanitizeVideoParams(params, inputReference) {
   const errors = [];
   // 後方互換のため旧フィールド名を新フィールドへマップ
   const prompt = params.prompt;
@@ -95,13 +166,17 @@ function sanitizeVideoParams(params) {
   if (!allowedModels.includes(model)) {
     errors.push('model must be one of sora-2, sora-2-pro');
   }
-  const sizePattern = /^\d{3,5}x\d{3,5}$/;
-  if (!sizePattern.test(size)) {
-    errors.push('size must follow WIDTHxHEIGHT');
+  const allowedSizes = ['720x1280', '1280x720', '1024x1792', '1792x1024'];
+  if (!allowedSizes.includes(size)) {
+    errors.push('size must be one of 720x1280, 1280x720, 1024x1792, 1792x1024');
   }
   const allowedSeconds = ['4', '8', '12'];
   if (!allowedSeconds.includes(seconds)) {
     errors.push('seconds must be one of 4, 8, 12');
+  }
+
+  if (inputReference && inputReference.buffer.length === 0) {
+    errors.push('input_reference file is empty');
   }
 
   return {
@@ -110,6 +185,7 @@ function sanitizeVideoParams(params) {
     model,
     size,
     seconds,
+    inputReference,
   };
 }
 
@@ -118,20 +194,24 @@ async function callOpenAIVideoCreate(params) {
     throw new Error('OPENAI_API_KEY is not configured');
   }
 
+  const formData = new FormData();
+  formData.set('model', params.model);
+  formData.set('prompt', params.prompt);
+  formData.set('seconds', params.seconds);
+  formData.set('size', params.size);
+  if (params.inputReference) {
+    const blob = new Blob([params.inputReference.buffer], {
+      type: params.inputReference.mimeType || 'application/octet-stream',
+    });
+    formData.append('input_reference', blob, params.inputReference.filename);
+  }
+
   const response = await fetch('https://api.openai.com/v1/videos', {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${API_KEY}`,
-      'Content-Type': 'application/json',
     },
-    body: JSON.stringify({
-      model: params.model,
-      prompt: params.prompt,
-      // API 仕様に合わせて seconds をそのまま送信
-      seconds: params.seconds,
-      // 解像度は API 仕様に従い "WxH" の size で指定
-      size: params.size,
-    }),
+    body: formData,
   });
 
   if (!response.ok) {
@@ -312,8 +392,25 @@ const server = http.createServer(async (req, res) => {
       }
 
       if (req.method === 'POST' && pathname === '/api/videos') {
-        const body = await parseJsonBody(req);
-        const sanitized = sanitizeVideoParams(body);
+        const contentType = req.headers['content-type'] || '';
+        let rawParams = {};
+        let inputReference = null;
+
+        try {
+          if (contentType.startsWith('multipart/form-data')) {
+            const parsed = await parseMultipartForm(req);
+            rawParams = parsed.fields;
+            inputReference = parsed.inputReference;
+          } else {
+            rawParams = await parseJsonBody(req);
+          }
+        } catch (err) {
+          const status = err.message && err.message.includes('exceed') ? 413 : 400;
+          sendJson(status, { message: err.message || 'Invalid request body' });
+          return;
+        }
+
+        const sanitized = sanitizeVideoParams(rawParams, inputReference);
         if (sanitized.errors.length > 0) {
           sendJson(400, { message: 'Validation error', errors: sanitized.errors });
           return;
@@ -326,6 +423,9 @@ const server = http.createServer(async (req, res) => {
           sendJson(502, { message: err.message });
           return;
         }
+
+        const hadInputReference = Boolean(sanitized.inputReference);
+        sanitized.inputReference = null;
 
         const videoId = crypto.randomUUID();
         const now = new Date().toISOString();
@@ -342,6 +442,7 @@ const server = http.createServer(async (req, res) => {
           // 旧フィールド（後方互換のため併記）
           resolution: sanitized.size,
           durationSeconds: sanitized.seconds,
+          input_reference: hadInputReference,
           createdAt: now,
           updatedAt: now,
           metadata: apiResponse.metadata || {},

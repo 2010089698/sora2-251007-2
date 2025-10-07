@@ -1,9 +1,8 @@
 const api = {
-  async createVideo(payload) {
+  async createVideo(formData) {
     const response = await fetch('/api/videos', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
+      body: formData,
     });
     if (!response.ok) {
       const error = await response.json().catch(() => ({ message: '不明なエラー' }));
@@ -264,15 +263,14 @@ async function handleFormSubmit(event) {
   setMessage('OpenAI へリクエストを送信中…');
   elements.generateBtn.disabled = true;
 
-  const payload = {
-    prompt: elements.prompt.value,
-    model: elements.model.value,
-    size: elements.size.value,
-    seconds: elements.seconds.value,
-  };
+  const formData = new FormData(elements.form);
+  const file = elements.inputReference.files[0];
+  if (!file) {
+    formData.delete('input_reference');
+  }
 
   try {
-    const { videoId, video } = await api.createVideo(payload);
+    const { videoId, video } = await api.createVideo(formData);
     state.videos.set(videoId, video);
     renderVideos();
     schedulePolling(videoId);
