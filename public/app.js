@@ -44,10 +44,9 @@ const elements = {
   form: document.getElementById('video-form'),
   prompt: document.getElementById('prompt'),
   model: document.getElementById('model'),
-  resolution: document.getElementById('resolution'),
-  duration: document.getElementById('duration'),
-  aspectRatio: document.getElementById('aspectRatio'),
-  seed: document.getElementById('seed'),
+  size: document.getElementById('size'),
+  seconds: document.getElementById('seconds'),
+  inputReference: document.getElementById('input_reference'),
   message: document.getElementById('form-message'),
   generateBtn: document.getElementById('generate-btn'),
   apiStatus: document.getElementById('api-status'),
@@ -73,12 +72,11 @@ function createMetadataList(video) {
   const entries = [
     ['プロンプト', video.prompt],
     ['モデル', video.model],
-    ['解像度', video.resolution],
-    ['長さ', `${video.durationSeconds ?? '-'} 秒`],
-    ['アスペクト比', video.aspectRatio],
+    ['解像度', video.size ?? video.resolution],
+    ['長さ', `${video.seconds ?? video.durationSeconds ?? '-'} 秒`],
     ['ステータス', translateStatus(video.status)],
     ['進捗', `${Math.round(progressValue * 100) / 100}%`],
-    ['シード', video.seed ?? '未指定'],
+    ['参照メディア', video.input_reference ? 'あり' : 'なし'],
     ['生成開始', new Date(video.createdAt).toLocaleString()],
     ['最終更新', new Date(video.updatedAt).toLocaleString()],
   ];
@@ -152,7 +150,7 @@ function renderVideos() {
     timestamp.textContent = new Date(video.createdAt).toLocaleString();
 
     title.textContent = video.prompt.slice(0, 48) + (video.prompt.length > 48 ? '…' : '');
-    meta.textContent = `${video.model} · ${video.resolution} · ${video.durationSeconds ?? '-'}秒`;
+    meta.textContent = `${video.model} · ${(video.size ?? video.resolution) || '-'} · ${(video.seconds ?? video.durationSeconds) || '-'}秒`;
 
     if (video.status !== 'completed') {
       playBtn.disabled = true;
@@ -268,14 +266,9 @@ async function handleFormSubmit(event) {
   const payload = {
     prompt: elements.prompt.value,
     model: elements.model.value,
-    resolution: elements.resolution.value,
-    durationSeconds: Number(elements.duration.value),
-    aspectRatio: elements.aspectRatio.value,
+    size: elements.size.value,
+    seconds: Number(elements.seconds.value),
   };
-
-  if (elements.seed.value !== '') {
-    payload.seed = Number(elements.seed.value);
-  }
 
   try {
     const { videoId, video } = await api.createVideo(payload);
@@ -284,7 +277,7 @@ async function handleFormSubmit(event) {
     schedulePolling(videoId);
     setMessage('生成ジョブを開始しました。ステータスが完了になるまで待ちましょう。', 'success');
     elements.form.reset();
-    elements.duration.value = '10';
+    elements.seconds.value = '4';
   } catch (error) {
     console.error(error);
     setMessage(error.message, 'error');

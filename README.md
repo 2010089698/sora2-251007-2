@@ -19,7 +19,7 @@
 
 ## 4. スコープ（MVPで必須）
 1. **動画生成フォーム**
-   - 入力項目: プロンプト、モデル選択（`sora-2` / `sora-2-pro`）、解像度（例: 720p/1080p）、秒数、アスペクト比、任意のシード値。
+   - 入力項目: `prompt`、任意の `input_reference`、`model`（既定: `sora-2`）、`seconds`（既定: 4）、`size`（既定: `720x1280`）。
    - 生成ボタン、進捗メッセージまたはバー表示。
 2. **動画一覧画面**
    - サムネイル、生成日時、ステータス、利用モデル、推定コストなどをカード表示。
@@ -71,18 +71,20 @@
 - `id`: UUID（自前 ID）。
 - `provider_video_id`: OpenAI の動画 ID。
 - `status`: `queued` / `processing` / `completed` / `failed`。
-- `model`: `sora-2` など使用モデル名。
+- `model`: 使用モデル名（既定: `sora-2`）。
 - `prompt`: 生成プロンプト。
-- `duration_seconds`: 生成秒数。
-- `resolution`: 例 `1920x1080`。
+- `seconds`: 生成秒数。必要に応じて外部 API 送信時に `duration` へマッピング。
+ - `seconds`: 生成秒数。外部 API にも `seconds` として送信。
+- `size`: 出力解像度（例: `1920x1080`）。
+- `input_reference?`: 参照する画像/動画のメタ情報または格納先（任意）。
 - `cost_estimate_usd`: コスト目安（任意）。
 - `created_at`, `updated_at`。
-- `metadata`: JSON（アスペクト比、シードなど）。
+- `metadata`: JSON（アスペクト比、任意のシード値など）。
 
 ## 9. API 契約イメージ
 - **生成開始**
   - リクエスト: `POST /api/videos`
-  - ボディ: `prompt`, `model`, `durationSeconds`, `resolution`, `seed` 等。
+  - ボディ: `prompt`（必須）, `input_reference`（任意）, `model`（任意・既定: `sora-2`）, `seconds`（任意・既定: 4）, `size`（任意・既定: `720x1280`）。
   - レスポンス: `{ "videoId": string }`
 - **ステータス取得**
   - リクエスト: `GET /api/videos/:id/status`

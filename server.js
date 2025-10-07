@@ -76,14 +76,11 @@ function serveStatic(req, res, filePath) {
 
 function sanitizeVideoParams(params) {
   const errors = [];
-  const {
-    prompt,
-    model = 'sora-2',
-    resolution = '1280x720',
-    durationSeconds = 10,
-    aspectRatio = '16:9',
-    seed = null,
-  } = params;
+  // 後方互換のため旧フィールド名を新フィールドへマップ
+  const prompt = params.prompt;
+  const model = params.model ?? 'sora-2';
+  const size = (params.size || params.resolution || '720x1280');
+  const seconds = (params.seconds != null ? params.seconds : (params.durationSeconds != null ? params.durationSeconds : 4));
 
   if (!prompt || typeof prompt !== 'string' || !prompt.trim()) {
     errors.push('prompt is required');
@@ -92,36 +89,21 @@ function sanitizeVideoParams(params) {
   if (!allowedModels.includes(model)) {
     errors.push('model must be one of sora-2, sora-2-pro');
   }
-  const resolutionPattern = /^\d{3,5}x\d{3,5}$/;
-  if (!resolutionPattern.test(resolution)) {
-    errors.push('resolution must follow WIDTHxHEIGHT');
+  const sizePattern = /^\d{3,5}x\d{3,5}$/;
+  if (!sizePattern.test(size)) {
+    errors.push('size must follow WIDTHxHEIGHT');
   }
-  const durationNumber = Number(durationSeconds);
-  if (!Number.isFinite(durationNumber) || durationNumber <= 0 || durationNumber > 120) {
-    errors.push('durationSeconds must be between 1 and 120');
-  }
-  const aspectPattern = /^\d+:\d+$/;
-  if (!aspectPattern.test(aspectRatio)) {
-    errors.push('aspectRatio must follow W:H');
-  }
-  let parsedSeed = null;
-  if (seed !== null && seed !== undefined && seed !== '') {
-    const numericSeed = Number(seed);
-    if (!Number.isInteger(numericSeed) || numericSeed < 0) {
-      errors.push('seed must be a non-negative integer');
-    } else {
-      parsedSeed = numericSeed;
-    }
+  const secondsNumber = Number(seconds);
+  if (!Number.isFinite(secondsNumber) || secondsNumber <= 0 || secondsNumber > 120) {
+    errors.push('seconds must be between 1 and 120');
   }
 
   return {
     errors,
     prompt: prompt ? prompt.trim() : '',
     model,
-    resolution,
-    durationSeconds: durationNumber,
-    aspectRatio,
-    seed: parsedSeed,
+    size,
+    seconds: secondsNumber,
   };
 }
 
@@ -139,10 +121,10 @@ async function callOpenAIVideoCreate(params) {
     body: JSON.stringify({
       model: params.model,
       prompt: params.prompt,
-      resolution: params.resolution,
-      duration_seconds: params.durationSeconds,
-      aspect_ratio: params.aspectRatio,
-      seed: params.seed,
+      // API 仕様に合わせて seconds をそのまま送信
+      seconds: params.seconds,
+      // 解像度は API 仕様に従い "WxH" の size で指定
+      size: params.size,
     }),
   });
 
@@ -267,11 +249,17 @@ function scheduleStatusPoll(videoId) {
         record.status = 'failed';
         record.errorMessage = statusResponse.error.message || String(statusResponse.error);
       }
-      if (statusResponse.duration_seconds) {
-        record.durationSeconds = statusResponse.duration_seconds;
+      const dur =
+        (statusResponse && (statusResponse.duration_seconds ?? statusResponse.duration ?? statusResponse.length_seconds));
+      if (typeof dur === 'number') {
+        record.durationSeconds = dur;
       }
       if (statusResponse.resolution) {
         record.resolution = statusResponse.resolution;
+      } else if (statusResponse.dimensions) {
+        record.resolution = statusResponse.dimensions;
+      } else if (statusResponse.width && statusResponse.height) {
+        record.resolution = `${statusResponse.width}x${statusResponse.height}`;
       }
       record.updatedAt = new Date().toISOString();
       if (!['queued', 'processing'].includes(record.status)) {
@@ -342,10 +330,12 @@ const server = http.createServer(async (req, res) => {
           progress: typeof apiResponse.progress === 'number' ? apiResponse.progress : 0,
           prompt: sanitized.prompt,
           model: sanitized.model,
-          resolution: sanitized.resolution,
-          durationSeconds: sanitized.durationSeconds,
-          aspectRatio: sanitized.aspectRatio,
-          seed: sanitized.seed,
+          // 新フィールド
+          size: sanitized.size,
+          seconds: sanitized.seconds,
+          // 旧フィールド（後方互換のため併記）
+          resolution: sanitized.size,
+          durationSeconds: sanitized.seconds,
           createdAt: now,
           updatedAt: now,
           metadata: apiResponse.metadata || {},

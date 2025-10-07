@@ -30,8 +30,9 @@
               </select>
             </div>
             <div class="field">
-              <label for="resolution">解像度</label>
-              <select id="resolution" name="resolution">
+              <label for="size">解像度</label>
+              <select id="size" name="size">
+                <option value="720x1280">720 x 1280</option>
                 <option value="1280x720">1280 x 720</option>
                 <option value="1920x1080">1920 x 1080</option>
                 <option value="3840x2160">3840 x 2160</option>
@@ -40,21 +41,14 @@
           </div>
           <div class="field-grid">
             <div class="field">
-              <label for="duration">長さ（秒）</label>
-              <input type="number" id="duration" name="duration" min="1" max="120" value="10" required />
+              <label for="seconds">長さ（秒）</label>
+              <input type="number" id="seconds" name="seconds" min="1" max="120" value="4" required />
             </div>
             <div class="field">
-              <label for="aspectRatio">アスペクト比</label>
-              <select id="aspectRatio" name="aspectRatio">
-                <option value="16:9">16:9</option>
-                <option value="9:16">9:16</option>
-                <option value="1:1">1:1</option>
-              </select>
+              <label for="input_reference">参照メディア（任意）</label>
+              <input type="file" id="input_reference" name="input_reference" accept="image/*,video/*" />
+              <p class="hint">構図や色味の参考となる画像/動画を添付できます（任意）。</p>
             </div>
-          </div>
-          <div class="field">
-            <label for="seed">シード（任意）</label>
-            <input type="number" id="seed" name="seed" min="0" placeholder="ランダム" />
           </div>
           <div class="form-actions">
             <button type="submit" id="generate-btn">生成を開始</button>
