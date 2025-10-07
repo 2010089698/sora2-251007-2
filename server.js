@@ -166,9 +166,9 @@ function sanitizeVideoParams(params, inputReference) {
   if (!allowedModels.includes(model)) {
     errors.push('model must be one of sora-2, sora-2-pro');
   }
-  const sizePattern = /^\d{3,5}x\d{3,5}$/;
-  if (!sizePattern.test(size)) {
-    errors.push('size must follow WIDTHxHEIGHT');
+  const allowedSizes = ['720x1280', '1280x720', '1024x1792', '1792x1024'];
+  if (!allowedSizes.includes(size)) {
+    errors.push('size must be one of 720x1280, 1280x720, 1024x1792, 1792x1024');
   }
   const allowedSeconds = ['4', '8', '12'];
   if (!allowedSeconds.includes(seconds)) {
