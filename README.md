@@ -59,6 +59,7 @@
 ### 7.2 バックエンド
 - 推奨エンドポイント:
   - `POST /api/videos`: 動画生成ジョブを作成し、自前 ID を発行。
+    - multipart/form-data で受け付け、`input_reference` は 25MB 以下のバイナリを OpenAI API へストリーミング転送する（サーバーに保存しない）。
   - `GET /api/videos/:id/status`: OpenAI Videos API を参照して進捗・状態を返却。
   - `GET /api/videos/:id/content`: OpenAI のコンテンツエンドポイントへサーバからアクセスし、動画バイナリをストリーミング返却。
 - API キーはバックエンドの環境変数で管理。リクエストごとにヘッダへ挿入。
@@ -76,7 +77,7 @@
 - `seconds`: 生成秒数。必要に応じて外部 API 送信時に `duration` へマッピング。
  - `seconds`: 生成秒数。外部 API にも `seconds` として送信。
 - `size`: 出力解像度（例: `1920x1080`）。
-- `input_reference?`: 参照する画像/動画のメタ情報または格納先（任意）。
+- `input_reference?`: 参照メディアが添付されたかどうかのフラグ。バイナリは保存せずに OpenAI へ転送する。
 - `cost_estimate_usd`: コスト目安（任意）。
 - `created_at`, `updated_at`。
 - `metadata`: JSON（アスペクト比、任意のシード値など）。
@@ -84,7 +85,7 @@
 ## 9. API 契約イメージ
 - **生成開始**
   - リクエスト: `POST /api/videos`
-  - ボディ: `prompt`（必須）, `input_reference`（任意）, `model`（任意・既定: `sora-2`）, `seconds`（任意・既定: 4）, `size`（任意・既定: `720x1280`）。
+  - ボディ: `multipart/form-data`。`prompt`（必須）, `input_reference`（任意・25MB 以下）, `model`（任意・既定: `sora-2`）, `seconds`（任意・既定: 4）, `size`（任意・既定: `720x1280`）。
   - レスポンス: `{ "videoId": string }`
 - **ステータス取得**
   - リクエスト: `GET /api/videos/:id/status`
