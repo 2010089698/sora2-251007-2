@@ -9,6 +9,8 @@ const PORT = process.env.PORT ? Number(process.env.PORT) : 3000;
 const HOST = '0.0.0.0';
 const API_KEY = process.env.OPENAI_API_KEY || '';
 const POLL_INTERVAL_MS = 5000;
+const MAX_FORM_SIZE_BYTES = 25 * 1024 * 1024; // 25MB
+const MAX_INPUT_REFERENCE_BYTES = 20 * 1024 * 1024; // 20MB
 
 const videos = new Map();
 const pollHandles = new Map();
@@ -48,6 +50,117 @@ async function parseJsonBody(req) {
   });
 }
 
+async function parseMultipartForm(req, options = {}) {
+  const contentType = req.headers['content-type'] || '';
+  const boundaryMatch = contentType.match(/boundary=(?:"?)([^";]+)(?:"?)/i);
+  if (!boundaryMatch) {
+    throw new Error('Missing multipart boundary');
+  }
+
+  const boundaryKey = boundaryMatch[1];
+  const boundary = `--${boundaryKey}`;
+  const boundaryBuffer = Buffer.from(boundary);
+  const headerDelimiter = Buffer.from('\r\n\r\n');
+  const maxSize = options.maxSize ?? MAX_FORM_SIZE_BYTES;
+
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    let total = 0;
+
+    req.on('data', (chunk) => {
+      total += chunk.length;
+      if (total > maxSize) {
+        reject(new Error('Payload too large'));
+        req.destroy();
+        return;
+      }
+      chunks.push(chunk);
+    });
+
+    req.on('end', () => {
+      try {
+        const buffer = Buffer.concat(chunks);
+        const result = { fields: {}, files: {} };
+        let position = buffer.indexOf(boundaryBuffer);
+        if (position === -1) {
+          resolve(result);
+          return;
+        }
+
+        position += boundaryBuffer.length;
+
+        while (position < buffer.length) {
+          if (buffer[position] === 45 && buffer[position + 1] === 45) {
+            break;
+          }
+          if (buffer[position] === 13 && buffer[position + 1] === 10) {
+            position += 2;
+          }
+
+          const headerEndIndex = buffer.indexOf(headerDelimiter, position);
+          if (headerEndIndex === -1) {
+            break;
+          }
+
+          const headersText = buffer.slice(position, headerEndIndex).toString('utf8');
+          position = headerEndIndex + headerDelimiter.length;
+
+          let nextBoundaryIndex = buffer.indexOf(boundaryBuffer, position);
+          if (nextBoundaryIndex === -1) {
+            nextBoundaryIndex = buffer.length;
+          }
+
+          let dataEnd = nextBoundaryIndex - 2;
+          while (dataEnd >= position && (buffer[dataEnd] === 13 || buffer[dataEnd] === 10)) {
+            dataEnd -= 1;
+          }
+          dataEnd += 1;
+
+          const partData = buffer.slice(position, dataEnd);
+
+          const dispositionMatch = headersText.match(/Content-Disposition:\s*form-data;\s*name="([^"]+)"(?:;\s*filename="([^"]*)")?/i);
+          if (dispositionMatch) {
+            const name = dispositionMatch[1];
+            const filename = dispositionMatch[2];
+            const contentTypeMatch = headersText.match(/Content-Type:\s*([^\r\n]+)/i);
+            const contentType = contentTypeMatch ? contentTypeMatch[1].trim() : 'application/octet-stream';
+
+            if (filename !== undefined && filename !== '') {
+              result.files[name] = {
+                filename,
+                contentType,
+                data: partData,
+              };
+            } else {
+              result.fields[name] = partData.toString('utf8');
+            }
+          }
+
+          position = nextBoundaryIndex + boundaryBuffer.length;
+
+          if (position >= buffer.length) {
+            break;
+          }
+
+          if (buffer[position] === 45 && buffer[position + 1] === 45) {
+            break;
+          }
+
+          if (buffer[position] === 13 && buffer[position + 1] === 10) {
+            position += 2;
+          }
+        }
+
+        resolve(result);
+      } catch (err) {
+        reject(err);
+      }
+    });
+
+    req.on('error', reject);
+  });
+}
+
 function serveStatic(req, res, filePath) {
   const resolvedPath = path.join(__dirname, 'public', filePath);
   fs.stat(resolvedPath, (err, stats) => {
@@ -81,6 +194,7 @@ function sanitizeVideoParams(params) {
   const model = params.model ?? 'sora-2';
   const size = (params.size || params.resolution || '720x1280');
   const seconds = (params.seconds != null ? params.seconds : (params.durationSeconds != null ? params.durationSeconds : 4));
+  const inputReference = params.inputReference ?? null;
 
   if (!prompt || typeof prompt !== 'string' || !prompt.trim()) {
     errors.push('prompt is required');
@@ -98,12 +212,32 @@ function sanitizeVideoParams(params) {
     errors.push('seconds must be between 1 and 120');
   }
 
+  let sanitizedReference = null;
+  if (inputReference && inputReference.data) {
+    if (!Buffer.isBuffer(inputReference.data)) {
+      errors.push('input_reference must be a binary file');
+    } else {
+      if (inputReference.data.length === 0) {
+        errors.push('input_reference must not be empty');
+      }
+      if (inputReference.data.length > MAX_INPUT_REFERENCE_BYTES) {
+        errors.push(`input_reference must be <= ${Math.floor(MAX_INPUT_REFERENCE_BYTES / (1024 * 1024))}MB`);
+      }
+    }
+    sanitizedReference = {
+      filename: inputReference.filename || 'input-reference',
+      contentType: inputReference.contentType || 'application/octet-stream',
+      data: inputReference.data,
+    };
+  }
+
   return {
     errors,
     prompt: prompt ? prompt.trim() : '',
     model,
     size,
     seconds: secondsNumber,
+    inputReference: sanitizedReference,
   };
 }
 
@@ -112,20 +246,25 @@ async function callOpenAIVideoCreate(params) {
     throw new Error('OPENAI_API_KEY is not configured');
   }
 
+  const formData = new FormData();
+  formData.append('model', params.model);
+  formData.append('prompt', params.prompt);
+  formData.append('seconds', String(params.seconds));
+  formData.append('size', params.size);
+
+  if (params.inputReference && params.inputReference.data) {
+    const blob = new Blob([params.inputReference.data], {
+      type: params.inputReference.contentType || 'application/octet-stream',
+    });
+    formData.append('input_reference', blob, params.inputReference.filename || 'input-reference');
+  }
+
   const response = await fetch('https://api.openai.com/v1/videos', {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${API_KEY}`,
-      'Content-Type': 'application/json',
     },
-    body: JSON.stringify({
-      model: params.model,
-      prompt: params.prompt,
-      // API 仕様に合わせて seconds をそのまま送信
-      seconds: params.seconds,
-      // 解像度は API 仕様に従い "WxH" の size で指定
-      size: params.size,
-    }),
+    body: formData,
   });
 
   if (!response.ok) {
@@ -306,8 +445,24 @@ const server = http.createServer(async (req, res) => {
       }
 
       if (req.method === 'POST' && pathname === '/api/videos') {
-        const body = await parseJsonBody(req);
-        const sanitized = sanitizeVideoParams(body);
+        const contentType = req.headers['content-type'] || '';
+        let parsedFields = {};
+        let inputReferenceFile = null;
+
+        try {
+          if (contentType.includes('multipart/form-data')) {
+            const { fields, files } = await parseMultipartForm(req);
+            parsedFields = fields;
+            inputReferenceFile = files.input_reference ?? null;
+          } else {
+            parsedFields = await parseJsonBody(req);
+          }
+        } catch (err) {
+          sendJson(400, { message: err.message || 'Invalid request body' });
+          return;
+        }
+
+        const sanitized = sanitizeVideoParams({ ...parsedFields, inputReference: inputReferenceFile });
         if (sanitized.errors.length > 0) {
           sendJson(400, { message: 'Validation error', errors: sanitized.errors });
           return;
@@ -319,6 +474,12 @@ const server = http.createServer(async (req, res) => {
         } catch (err) {
           sendJson(502, { message: err.message });
           return;
+        }
+
+        const hasInputReference = Boolean(sanitized.inputReference);
+        if (sanitized.inputReference) {
+          sanitized.inputReference.data = null;
+          sanitized.inputReference = null;
         }
 
         const videoId = crypto.randomUUID();
@@ -336,6 +497,7 @@ const server = http.createServer(async (req, res) => {
           // 旧フィールド（後方互換のため併記）
           resolution: sanitized.size,
           durationSeconds: sanitized.seconds,
+          input_reference: hasInputReference,
           createdAt: now,
           updatedAt: now,
           metadata: apiResponse.metadata || {},

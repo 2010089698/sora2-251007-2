@@ -1,10 +1,21 @@
 const api = {
   async createVideo(payload) {
-    const response = await fetch('/api/videos', {
+    let body = payload;
+    let headers = null;
+    if (!(payload instanceof FormData)) {
+      headers = { 'Content-Type': 'application/json' };
+      body = JSON.stringify(payload ?? {});
+    }
+
+    const options = {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
+      body,
+    };
+    if (headers) {
+      options.headers = headers;
+    }
+
+    const response = await fetch('/api/videos', options);
     if (!response.ok) {
       const error = await response.json().catch(() => ({ message: '不明なエラー' }));
       throw new Error(error.message || '生成に失敗しました');
@@ -263,15 +274,22 @@ async function handleFormSubmit(event) {
   setMessage('OpenAI へリクエストを送信中…');
   elements.generateBtn.disabled = true;
 
-  const payload = {
-    prompt: elements.prompt.value,
-    model: elements.model.value,
-    size: elements.size.value,
-    seconds: Number(elements.seconds.value),
-  };
+  const formData = new FormData();
+  formData.append('prompt', elements.prompt.value);
+  formData.append('model', elements.model.value);
+  formData.append('size', elements.size.value);
+  formData.append('seconds', elements.seconds.value);
+
+  const inputFiles = elements.inputReference.files;
+  if (inputFiles && inputFiles.length > 0) {
+    const [file] = inputFiles;
+    if (file && file.size > 0) {
+      formData.append('input_reference', file);
+    }
+  }
 
   try {
-    const { videoId, video } = await api.createVideo(payload);
+    const { videoId, video } = await api.createVideo(formData);
     state.videos.set(videoId, video);
     renderVideos();
     schedulePolling(videoId);
