@@ -79,7 +79,8 @@ function sanitizeVideoParams(params) {
   // 後方互換のため旧フィールド名を新フィールドへマップ
   const prompt = params.prompt;
   const model = params.model ?? 'sora-2';
-  const size = (params.size || params.resolution || '720x1280');
+  const allowedSizes = ['720x1280', '1280x720', '1024x1792', '1792x1024'];
+  const size = params.size || params.resolution || allowedSizes[0];
   const seconds = (params.seconds != null ? params.seconds : (params.durationSeconds != null ? params.durationSeconds : 4));
 
   if (!prompt || typeof prompt !== 'string' || !prompt.trim()) {
@@ -89,9 +90,8 @@ function sanitizeVideoParams(params) {
   if (!allowedModels.includes(model)) {
     errors.push('model must be one of sora-2, sora-2-pro');
   }
-  const sizePattern = /^\d{3,5}x\d{3,5}$/;
-  if (!sizePattern.test(size)) {
-    errors.push('size must follow WIDTHxHEIGHT');
+  if (typeof size !== 'string' || !allowedSizes.includes(size)) {
+    errors.push(`size must be one of ${allowedSizes.join(', ')}`);
   }
   const secondsNumber = Number(seconds);
   if (!Number.isFinite(secondsNumber) || secondsNumber <= 0 || secondsNumber > 120) {

@@ -75,7 +75,7 @@
 - `prompt`: 生成プロンプト。
 - `seconds`: 生成秒数。必要に応じて外部 API 送信時に `duration` へマッピング。
  - `seconds`: 生成秒数。外部 API にも `seconds` として送信。
-- `size`: 出力解像度（例: `1920x1080`）。
+- `size`: 出力解像度（`720x1280` / `1280x720` / `1024x1792` / `1792x1024`）。
 - `input_reference?`: 参照する画像/動画のメタ情報または格納先（任意）。
 - `cost_estimate_usd`: コスト目安（任意）。
 - `created_at`, `updated_at`。
