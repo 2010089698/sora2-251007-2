@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Sora2 個人用 MVP</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="app-header">
+      <h1>Sora2 個人用動画スタジオ</h1>
+      <p class="subtitle">生成して、待って、再生する。最低限だけど壊れない体験を。</p>
+    </header>
+
+    <main class="layout">
+      <section class="panel form-panel">
+        <h2>動画を生成</h2>
+        <form id="video-form">
+          <div class="field">
+            <label for="prompt">プロンプト</label>
+            <textarea id="prompt" name="prompt" rows="4" required placeholder="海辺を歩く柴犬のシネマティック映像"></textarea>
+            <p class="hint">どんな映像が欲しいかを日本語でも英語でも記述できます。</p>
+          </div>
+          <div class="field-grid">
+            <div class="field">
+              <label for="model">モデル</label>
+              <select id="model" name="model">
+                <option value="sora-2">sora-2</option>
+                <option value="sora-2-pro">sora-2-pro</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="resolution">解像度</label>
+              <select id="resolution" name="resolution">
+                <option value="1280x720">1280 x 720</option>
+                <option value="1920x1080">1920 x 1080</option>
+                <option value="3840x2160">3840 x 2160</option>
+              </select>
+            </div>
+          </div>
+          <div class="field-grid">
+            <div class="field">
+              <label for="duration">長さ（秒）</label>
+              <input type="number" id="duration" name="duration" min="1" max="120" value="10" required />
+            </div>
+            <div class="field">
+              <label for="aspectRatio">アスペクト比</label>
+              <select id="aspectRatio" name="aspectRatio">
+                <option value="16:9">16:9</option>
+                <option value="9:16">9:16</option>
+                <option value="1:1">1:1</option>
+              </select>
+            </div>
+          </div>
+          <div class="field">
+            <label for="seed">シード（任意）</label>
+            <input type="number" id="seed" name="seed" min="0" placeholder="ランダム" />
+          </div>
+          <div class="form-actions">
+            <button type="submit" id="generate-btn">生成を開始</button>
+            <span class="api-status" id="api-status"></span>
+          </div>
+          <div class="form-message" id="form-message"></div>
+        </form>
+      </section>
+
+      <section class="panel list-panel">
+        <div class="panel-heading">
+          <h2>生成済み動画</h2>
+          <button class="refresh-btn" id="refresh-btn" type="button">更新</button>
+        </div>
+        <div id="video-list" class="video-list"></div>
+      </section>
+
+      <section class="panel player-panel">
+        <h2>プレビュー</h2>
+        <div class="player-wrapper">
+          <video id="video-player" controls preload="metadata"></video>
+        </div>
+        <div class="metadata" id="video-metadata"></div>
+        <div class="download" id="download-container"></div>
+      </section>
+    </main>
+
+    <template id="video-card-template">
+      <article class="video-card">
+        <div class="video-card-header">
+          <div class="status-indicator"></div>
+          <span class="status-text"></span>
+          <time class="timestamp"></time>
+        </div>
+        <div class="video-card-body">
+          <h3 class="video-title"></h3>
+          <p class="video-meta"></p>
+        </div>
+        <div class="video-card-actions">
+          <button class="play-btn" type="button">再生</button>
+        </div>
+      </article>
+    </template>
+
+    <script src="app.js" type="module"></script>
+  </body>
+</html>
