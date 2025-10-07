@@ -229,7 +229,8 @@ button:hover {
   color: #34d399;
 }
 
-.video-card.processing .play-btn {
+.video-card.processing .play-btn,
+.video-card.in_progress .play-btn {
   opacity: 0.4;
   pointer-events: none;
 }

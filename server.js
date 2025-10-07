@@ -239,7 +239,7 @@ function scheduleStatusPoll(videoId) {
   }
   const poll = async () => {
     const record = videos.get(videoId);
-    if (!record || !['queued', 'processing'].includes(record.status)) {
+    if (!record || !['queued', 'in_progress'].includes(record.status)) {
       pollHandles.delete(videoId);
       return;
     }
@@ -268,7 +268,7 @@ function scheduleStatusPoll(videoId) {
         record.resolution = `${statusResponse.width}x${statusResponse.height}`;
       }
       record.updatedAt = new Date().toISOString();
-      if (!['queued', 'processing'].includes(record.status)) {
+      if (!['queued', 'in_progress'].includes(record.status)) {
         pollHandles.delete(videoId);
         return;
       }

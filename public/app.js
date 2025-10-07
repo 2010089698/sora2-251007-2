@@ -97,6 +97,7 @@ function translateStatus(status) {
     case 'queued':
       return 'キュー待ち';
     case 'processing':
+    case 'in_progress':
       return '生成中';
     case 'completed':
       return '完了';
@@ -140,7 +141,7 @@ function renderVideos() {
     const meta = clone.querySelector('.video-meta');
     const playBtn = clone.querySelector('.play-btn');
 
-    clone.classList.remove('queued', 'processing', 'completed', 'failed');
+    clone.classList.remove('queued', 'processing', 'in_progress', 'completed', 'failed');
     clone.classList.add(video.status);
 
     statusIndicator.title = translateStatus(video.status);
@@ -208,7 +209,7 @@ async function refreshStatus(id) {
     if (state.currentVideoId === video.id) {
       updatePlayer(video);
     }
-    if (['queued', 'processing'].includes(video.status)) {
+    if (['queued', 'in_progress'].includes(video.status)) {
       schedulePolling(id);
     } else {
       stopPolling(id);
@@ -250,7 +251,7 @@ async function refreshList() {
     state.videos = new Map(videos.map((video) => [video.id, video]));
     renderVideos();
     videos
-      .filter((video) => ['queued', 'processing'].includes(video.status))
+      .filter((video) => ['queued', 'in_progress'].includes(video.status))
       .forEach((video) => schedulePolling(video.id));
   } catch (error) {
     console.error(error);
